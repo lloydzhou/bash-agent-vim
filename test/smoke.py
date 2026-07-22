@@ -78,9 +78,13 @@ if data.count("hello-vim-agent") < 2:
 
 # 终端宽度仅 40 列，注入文本会被折行，先去掉空白再匹配
 flat = re.sub(r"\s+", "", data)
-m = re.search(r"(@/tmp/agent_vim_smoke_buf\.sh)", flat)
+m = re.search(r'@"(/tmp/agent_vim_smoke_buf\.sh)"', flat)
 if not m:
     fails.append("AgentSendBuffer 注入的 @ 引用未出现在终端")
+
+# AgentSend 含 <CR> 字面量，vim8 term_sendkeys 必须经 <LT> 转义才能原样回显
+if 'console.log("<CR>")' not in data:
+    fails.append("AgentSend 注入的 <CR> 字面量未原样保留（<LT> 转义可能未生效）")
 
 # AgentToggle 应能关闭窗口，且重开时复用同一 buffer
 if not os.path.exists(OUT_TOGGLE):

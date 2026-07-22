@@ -120,7 +120,8 @@ endfunction
 
 " ---------- 发送 ----------
 
-" 注意：vim8 term_sendkeys 会把 <...> 解析为特殊键，注入文本请勿包含 '<'。
+" vim8 term_sendkeys 与 nvim chansend 都按原始字节发送，与 feedkeys() 不同，
+" 不会把 <...> 当作特殊键记法解析（见 :help term_sendkeys）。
 function! s:send_raw(text) abort
   if s:has_nvim
     call chansend(s:job, a:text)
@@ -140,11 +141,10 @@ endfunction
 " 用 bracketed paste（ESC[200~ ... ESC[201~）包裹后注入。支持该协议的
 " REPL（ccagent 的 linenoise / claude / codex 等）会把整段含换行的文本
 " 作为一次粘贴并入输入缓冲，不逐行提交；不支持时标记字符会被原样回显，
-" 但内容仍可见，agent 侧一般也能识别。vim8 term_sendkeys 把 <...> 解析
-" 为特殊键，需把字面量 < 转成 <LT> 记法。
+" 但内容仍可见，agent 侧一般也能识别。vim8 term_sendkeys 与 nvim chansend
+" 都是原始字节，不需要对 < 等字符做特殊转义（与 feedkeys() 不同）。
 function! s:send_paste(text) abort
-  let l:body = s:has_nvim ? a:text : substitute(a:text, '<', '<LT>', 'g')
-  call s:send_raw("\x1b[200~" . l:body . "\x1b[201~")
+  call s:send_raw("\x1b[200~" . a:text . "\x1b[201~")
 endfunction
 
 " reenter: 调用本函数前是否已经坐在终端窗口且处于 Terminal-Normal 模式
@@ -203,9 +203,11 @@ function! agent#toggle(mode) abort
 endfunction
 
 " 把 [first, last] 范围的代码直接粘贴进 agent 输入框（不自动提交）。
-" 注入格式：
+" 注入格式（带 markdown fence，给 agent 明确的语言提示）：
 "   /abs/path/to/file:first-last
+"   ```<filetype>
 "   <代码原文>
+"   ```
 function! agent#send_range(first, last) abort
   if s:buf >= 0 && bufnr('%') == s:buf
     echoerr 'agent: 请在代码窗口执行 :AgentSend（当前在 agent 终端窗口）'
@@ -215,7 +217,8 @@ function! agent#send_range(first, last) abort
   let l:header = empty(l:path)
         \ ? printf('[未命名 buffer]:%d-%d', a:first, a:last)
         \ : printf('%s:%d-%d', l:path, a:first, a:last)
-  let l:text = l:header . "\n" . join(getline(a:first, a:last), "\n") . "\n"
+  let l:body = join(getline(a:first, a:last), "\n")
+  let l:text = printf("%s\n```%s\n%s\n```\n", l:header, &filetype, l:body)
   let l:reenter = s:in_term_normal()
   call s:ensure_running()
   call s:send_paste(l:text)
@@ -224,12 +227,14 @@ endfunction
 
 " 优先用 @ 引用整个文件路径（agent 会自动用 Read 工具读取）；
 " buffer 未落盘或已修改时退化为 send_range（粘贴当前内容，避免读到旧版本）。
+" 路径含空格时用 Claude Code 的 @"path" 引号语法；不带引号的 agent
+" 一般也能容忍（空格之后的字符会被当作附加提示），所以不强制只对含空格的路径加引号。
 function! agent#send_buffer() abort
   let l:path = expand('%:p')
   if !empty(l:path) && filereadable(l:path) && !&modified
     let l:reenter = s:in_term_normal()
     call s:ensure_running()
-    call s:send_raw('@' . l:path)
+    call s:send_raw('@"' . l:path . '"')
     call s:focus(l:reenter)
     return
   endif

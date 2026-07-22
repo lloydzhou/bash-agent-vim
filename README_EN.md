@@ -6,7 +6,7 @@ Run `ccagent` in a persistent right-side split in Vim 8+ or Neovim, using a VS C
 
 > **Send mechanism**
 > - `AgentSend`: pastes the selected code into the agent input box via **bracketed paste** (no temp file).
-> - `AgentSendBuffer`: injects an **`@/abs/path`** reference for saved, unmodified buffers (the agent reads the file via its Read tool); unsaved or modified buffers fall back to pasting the current content.
+> - `AgentSendBuffer`: injects an **`@"...path..."`** reference (quoted, so paths with spaces work; Claude Code supports this natively, other agents generally tolerate it) for saved, unmodified buffers — the agent reads the file via its Read tool. Unsaved or modified buffers fall back to pasting the current content.
 
 ## Installation
 
@@ -205,5 +205,5 @@ Note: the C implementation of `ccagent` supports only `--interactive`; it does n
 
 ```bash
 # PTY smoke test covering terminal startup, injection, @ reference, toggling, and shutdown
-python3 vim/test/smoke.py
+python3 test/smoke.py
 ```

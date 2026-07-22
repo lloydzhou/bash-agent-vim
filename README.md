@@ -6,7 +6,7 @@
 
 > **发送机制**
 > - `AgentSend`：选中代码用 **bracketed paste** 直接灌进 agent 输入框（不写临时文件）
-> - `AgentSendBuffer`：已落盘且未修改的 buffer 注入 **`@/abs/path`** 引用，由 agent 自行用 Read 工具读取；未落盘或已修改的 buffer 自动退化为粘贴当前内容
+> - `AgentSendBuffer`：已落盘且未修改的 buffer 注入 **`@"...path..."`** 引用（带引号，兼容路径里的空格；Claude Code 原生支持，其他 agent 一般也能识别），由 agent 自行用 Read 工具读取；未落盘或已修改的 buffer 自动退化为粘贴当前内容
 
 ## 安装
 
@@ -205,5 +205,5 @@ export AGENT_CONTINUE_COMMAND='zsh -ic open_claude'
 
 ```bash
 # PTY 冒烟测试（用 cat 冒充 agent，验证终端/注入/@ 引用/退出全流程）
-python3 vim/test/smoke.py
+python3 test/smoke.py
 ```
