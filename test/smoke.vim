@@ -9,8 +9,9 @@ let g:agent_command = 'agent-command-must-not-run'
 let g:agent_width = 40
 
 " 准备一个已知内容的 buffer 用于 AgentSendBuffer
-edit! /tmp/agent_vim_smoke_buf.sh
-call setline(1, ['echo one', 'echo two'])
+" 先写文件落盘并 :edit，确保走 @/abs/path 引用分支（未落盘会退化为粘贴）
+call writefile(['echo one', 'echo two'], '/tmp/agent_vim_smoke_buf.sh')
+edit /tmp/agent_vim_smoke_buf.sh
 set filetype=sh
 
 AgentToggle!
@@ -20,6 +21,17 @@ sleep 1500m
 wincmd p
 AgentSendBuffer
 sleep 1000m
+wincmd p
+
+" AgentSend 含 <CR> 字面量：vim8 term_sendkeys 会把 <...> 当特殊键解析，
+" 必须经 s:send_paste 的 <LT> 转义才能原样回显；nvim 的 chansend 是原始字节，
+" 天然不受影响。两种实现下都应在 cat 输出里看到字面量 <CR>。
+call writefile(['console.log("<CR>");'], '/tmp/agent_vim_smoke_range.js')
+edit /tmp/agent_vim_smoke_range.js
+set filetype=javascript
+1AgentSend
+sleep 1000m
+
 " 验证：AgentToggle 关闭（隐藏）窗口，再次 toggle 复用同一 buffer 重开
 wincmd p
 AgentToggle
@@ -32,13 +44,15 @@ call writefile([s:win_closed && s:win_reopen ? 'toggle-ok' : 'toggle-fail'], '/t
 let s:lines = getbufline('bash-agent', 1, '$')
 call writefile(s:lines, '/tmp/agent_vim_smoke.out')
 
-" 验证：注入文本首尾无泄漏按键（s:focus 的 feedkeys('i') 竞态会在末尾多一个 i，
-" 冷启动 AgentToggle 同理会在开头多一个 i）。长引用行会被 40 列终端折行，
-" 拼接所有行再检查，避免折行把 ）和 i 分到两行漏检。
+" 验证：AgentSendBuffer 注入的 @ 引用不含尖括号、不带回车（cat 不会立刻回显第二行）。
+" 长引用行会被 40 列终端折行，拼接所有行再检查；@path 之后紧跟 i 才算 focus 竞态泄漏。
+" 同时验证 AgentSend 注入的 <CR> 字面量被原样保留（<LT> 转义生效），
+" 没被 term_sendkeys 当成回车键吃掉。
 let s:joined = join(s:lines, '')
 let s:echo_ok = index(s:lines, 'hello-vim-agent') >= 0
-let s:ref_ok = stridx(s:joined, 'ctx-') >= 0 && stridx(s:joined, '代码片段）i') < 0
-call writefile([s:echo_ok && s:ref_ok ? 'noleak-ok' : 'noleak-fail'], '/tmp/agent_vim_smoke_noleak.out')
+let s:ref_ok = stridx(s:joined, '@"/tmp/agent_vim_smoke_buf.sh"') >= 0 && stridx(s:joined, '@"/tmp/agent_vim_smoke_buf.sh"i') < 0
+let s:lt_ok = stridx(s:joined, 'console.log("<CR>")') >= 0
+call writefile([s:echo_ok && s:ref_ok && s:lt_ok ? 'noleak-ok' : 'noleak-fail'], '/tmp/agent_vim_smoke_noleak.out')
 
 " 验证：进程退出后窗口自动关闭
 " 注意：AgentSendBuffer 注入的引用文本不带回车，行缓冲非空时第一个 Ctrl-D
